@@ -1,0 +1,47 @@
+---
+title: "p8105_hw6_yh3824"
+author: "ruby"
+date: "2025-11-18"
+output: github_document
+---
+
+```{r message = FALSE}
+library(tidyverse)
+library(mgcv)
+library(modelr)
+library(p8105.datasets)
+```
+
+## Problem 1
+
+import `homicide` data 
+```{r message = FALSE} 
+homicide_df = read_csv(file = "./data/homicide-data.csv")
+```
+
+Create a `city_state` variable
+
+```{r}
+homicide_df = 
+  homicide_df |> 
+    mutate(
+      city_state = paste(city, state, sep = ", ")
+    ) 
+```
+
+## Problem 2
+
+import `weather_df`
+
+```{r}
+data("weather_df")
+```
+
+## Problem 3
+
+import `birthweight` dataset 
+
+```{r message = FALSE}
+birthwgt_df = read_csv(file = "./data/birthweight.csv")
+```
+
