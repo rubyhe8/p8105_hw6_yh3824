@@ -11,7 +11,7 @@ load packages/formatting
 library(tidyverse)
 library(mgcv)
 library(modelr)
-library(p8105.datasets)
+
 
 
 knitr::opts_chunk$set(
@@ -132,7 +132,90 @@ xxxx
 import `weather_df`
 
 ```{r}
+library(p8105.datasets)
 data("weather_df")
+```
+
+bootstrapping - interested in r^2 and beta_1hat/beta_2hat 
+
+5,000 bootstrap samples and for each sample produce these 2 estimates 
+
+write function for lm, r_square, and beta1/beta2
+```{r}
+boot_function = function(df) {
+  boot_df = df |> 
+    sample_frac(size = 1, replace = TRUE)
+  fit = lm(tmax ~ tmin + prcp, data = boot_df)
+  r_squared = broom::glance(fit) |> 
+    pull(r.squared)
+  beta_1 = broom::tidy(fit) |> 
+    filter(term == "tmin") |> 
+    pull(estimate) 
+  beta_2 = broom::tidy(fit) |> 
+    filter(term == "prcp") |> 
+    pull(estimate) 
+  beta_ratio = beta_1/beta_2
+  
+  tibble(r_squared = r_squared, beta_ratio = beta_ratio)
+}
+```
+
+test function 
+
+```{r}
+boot_function(weather_df)
+```
+
+generate 5000 datasets 
+```{r}
+weather_sample = 
+  tibble(
+    iter = 1:5000
+  ) |> 
+  mutate(
+    sample = map(iter, \(i) boot_function(df = weather_df))
+  ) |> 
+  unnest(sample)
+```
+
+plot the distribution of r_squared
+```{r}
+weather_sample |> 
+  ggplot(aes(x = r_squared)) +
+  geom_histogram()  
+```
+
+plot the distribution of beta_1/beta_2
+```{r}
+weather_sample |> 
+  ggplot(aes(x = beta_ratio)) +
+  geom_histogram() 
+```
+
+### Comments 
+
+xxx
+
+
+identify 2.5% and 97.5% quantiles to find 95% confidence intervals for r_squared
+
+```{r}
+weather_sample |> 
+  summarize(
+    r_sq_lower_ci = quantile(r_squared, 0.025),
+    r_sq_upper_ci = quantile(r_squared, 0.975)
+  ) |> 
+  knitr::kable()
+```
+
+identify 2.5% and 97.5% quantiles to find 95% confidence intervals for beta_1/beta_2
+```{r}
+weather_sample |> 
+  summarize(
+    beta_lower_ci = quantile(beta_ratio, 0.025),
+    beta_upper_ci = quantile(beta_ratio, 0.975)
+  ) |> 
+  knitr::kable()
 ```
 
 ## Problem 3
