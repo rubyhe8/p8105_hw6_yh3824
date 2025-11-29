@@ -226,3 +226,90 @@ import `birthweight` dataset
 birthwgt_df = read_csv(file = "./data/birthweight.csv")
 ```
 
+look at and clean data 
+```{r}
+clean_birthwgt =
+  birthwgt_df |> 
+  janitor::clean_names() |> 
+  mutate(
+    babysex = factor(babysex, levels = c(1,2), labels = c("male","female")),
+    frace = factor(frace, levels = c(1,2,3,4,8,9), labels = c("White", "Black", "Asian", "Puerto Rican", "Other", "Unknown")),
+    mrace = factor(mrace,levels = c(1,2,3,4,8,9), labels = c("White", "Black", "Asian", "Puerto Rican", "Other", "Unknown")),
+    malform = factor(malform, levels = c(0,1), labels = c("absent","present"))
+  )
+
+colSums(is.na(clean_birthwgt))
+
+clean_birthwgt |> 
+  select(bwt, bhead, blength, gaweeks, momage, delwt, smoken, wtgain) |> 
+  pivot_longer(everything()) |> 
+  ggplot(aes(value)) + 
+  geom_histogram(bins = 30) +
+  facet_wrap(~ name, scales = "free")
+```
+
+propose a model for birthweight 
+```{r}
+proposed_model = lm(bwt ~ gaweeks + momage + smoken + babysex + mrace, data = clean_birthwgt)
+
+summary(proposed_model)
+```
+
+residual and predicted plot
+```{r}
+clean_birthwgt |> 
+  add_predictions(proposed_model) |> 
+  add_residuals(proposed_model) |> 
+  ggplot(aes(x = pred, y = resid)) +
+  geom_point(alpha = 0.5) +
+  geom_hline(yintercept = 0) +
+  geom_smooth(method = "loess", se = FALSE)
+```
+
+main effects only 
+```{r}
+main_effect_model = lm(bwt ~ gaweeks + blength, data = clean_birthwgt)
+```
+
+interaction model 
+```{r}
+interaction_model = lm(bwt ~ bhead * blength * babysex, data = clean_birthwgt)
+```
+
+cross-validate 
+```{r}
+cross_validate = 
+  crossv_mc(clean_birthwgt, n = 100) |> 
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble)
+  )
+
+cross_validate = 
+  cross_validate |> 
+  mutate(
+    proposed = map(train, \(df) lm(bwt ~ gaweeks + bhead + blength + malform + smoken + babysex + mrace + ppwt + wtgain, data = clean_birthwgt)),
+    main_effect = map(train, \(df) lm(bwt ~ gaweeks + blength, data = clean_birthwgt)),
+    interaction = map(train, \(df) lm(bwt ~ bhead * blength * babysex, data = clean_birthwgt))
+  ) |> 
+  mutate(
+    rmse_proposed = map2_dbl(proposed, test, rmse),
+    rmse_main_effect = map2_dbl(main_effect, test, rmse),
+    rmse_interaction = map2_dbl(interaction, test, rmse)
+  )
+```
+
+create boxplots to visualize
+```{r}
+cross_validate |> 
+  select(starts_with("rmse")) |> 
+  pivot_longer(
+    everything(),
+    names_to = "model",
+    values_to = "rmse",
+    names_prefix = "rmse_"
+  ) |> 
+  ggplot(aes(x = model, y = rmse)) +
+  geom_violin()
+```
+
