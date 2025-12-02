@@ -44,15 +44,16 @@ Create a `city_state` variable, filtering, make resolved vs unresolved variable
 
 ```{r}
 homicide_df = 
-  homicide_df |> 
+  read_csv(file = "./data/homicide-data.csv") |> 
+  janitor::clean_names() |> 
     mutate(
-      city_state = paste(city, state, sep = ", "),
+      city_state = str_c(city, ", ", state),
       victim_age = as.numeric(victim_age),
-      resolved = if_else(str_detect(disposition, "Closed"), 1, 0) 
+      resolved = as.numeric(disposition == "Closed by arrest") 
     ) |> 
   filter(!city_state %in% c("Dallas, TX", "Phoenix, AZ", "Kansas City, MO", "Tulsa, AL"),
-         victim_race %in% c("White", "Black"),
-         is.numeric(victim_age)) 
+         victim_race %in% c("White", "Black")) |>
+  select(city_state, resolved, victim_age, victim_sex, victim_race)
   
 ```
 
@@ -63,34 +64,44 @@ baltimore_df =
   homicide_df |> 
     filter(city_state == "Baltimore, MD") 
 
-fit = lm(resolved ~ victim_age + victim_sex + victim_race, data = baltimore_df) |> 
-  broom::tidy()
-  
+baltimore_glm = glm(resolved ~ victim_age + victim_sex + victim_race, data = baltimore_df, family = binomial()) 
+
+baltimore_glm |> 
+  broom::tidy(conf.int = TRUE) |> 
+  filter(term == "victim_sexMale") |> 
+  mutate(
+    odds_ratio = exp(estimate),
+    conf_low = exp(conf.low),
+    conf_high = exp(conf.high)
+  ) |> 
+  select(odds_ratio, conf_low, conf_high) |> 
+  knitr::kable(digits = 3)
+
 ```
 
 
-write a function `lm` for all cities 
+write a function for all cities 
 
 ```{r}
-lm_resolved = function(df) {
+glm_resolved = function(df) {
   
-  lm(resolved ~ victim_age + victim_sex + victim_race, data = df)
+  model = glm(resolved ~ victim_age + victim_sex + victim_race, data = df, family = binomial())
+
 }
 
 homicide_df |> 
   filter(city_state == "Baltimore, MD") |> 
-  lm_resolved() |> 
-  broom::tidy()
+  glm_resolved() 
 ```
 
-iterate to fit a model for each city 
+iterate model for each city  
 
 ```{r}
-resolved_lm_results =
+resolved_glm_results =
   homicide_df |> 
   nest(data = -city_state) |> 
   mutate(
-    fits = map(data, lm_resolved),
+    fits = map(data, glm_resolved),
     results = map(fits, ~ broom::tidy(.x, conf.int = TRUE) |> 
                     mutate(
                       odds_ratio = exp(estimate),
@@ -101,14 +112,15 @@ resolved_lm_results =
   select(city_state, results) |> 
   unnest(results) |> 
   filter(term == "victim_sexMale") |> 
-  select(city_state, term, odds_ratio, or_low, or_high, everything())
-  
+  select(city_state, odds_ratio, or_low, or_high)
+
+resolved_glm_results
 ```
 
 create a plot that shows estimate ORs and CIs for each city, organize cities according to estimate OR
 
 ```{r}
-resolved_lm_results |> 
+resolved_glm_results |> 
   mutate(
       city_state = fct_reorder(city_state, odds_ratio), y = odds_ratio) |> 
   ggplot(aes(x = city_state, y = odds_ratio)) +
@@ -124,7 +136,7 @@ resolved_lm_results |>
 
 ### Comments on Plot 
 
-xxxx
+When looking at the 50 large U.S. cities, Albuquerque, NM has the highest estimated odds ratios (OR = 1.77, 95% CI: 0.825, 3.76) for homicides being resolved when comparing male to female victims. New York, NY has the lowest estimated odds ratio (OR = 0.262, 95% CI: 0.133, 0.485). There does not appear to be any sort of geographic trend for the odds ratios, but most cities have an odds ratio of less than 1. Just by looking at the plot, approximately 24 cities have a 95% confidence interval that crosses the null of 1, indicating that the odds ratio is insignificant. This includes the highest value of Albuquerque, NM. 
 
 
 ## Problem 2
@@ -182,22 +194,32 @@ plot the distribution of r_squared
 ```{r}
 weather_sample |> 
   ggplot(aes(x = r_squared)) +
-  geom_histogram()  
+  geom_histogram() +
+  labs(
+    title = "Distibution of R squared"
+  )
 ```
+
+### Comments
+
+The distribution of r-squared appears to be approximately normally distributed with the center falling at around 0.92. The range appears to be between 0.93, 0.95. 
 
 plot the distribution of beta_1/beta_2
 ```{r}
 weather_sample |> 
   ggplot(aes(x = beta_ratio)) +
-  geom_histogram() 
+  geom_histogram() +
+  labs(
+    title = "Distribution of beta1/beta2"
+  )
 ```
 
 ### Comments 
 
-xxx
+The distribution of the beta1/beta2 proportion appears to be left skewed, with a peak at around -175 and a range between -400, -100.
 
 
-identify 2.5% and 97.5% quantiles to find 95% confidence intervals for r_squared
+identify 2.5% and 97.5% quantiles to find 95% confidence intervals for r_squared 
 
 ```{r}
 weather_sample |> 
@@ -205,7 +227,7 @@ weather_sample |>
     r_sq_lower_ci = quantile(r_squared, 0.025),
     r_sq_upper_ci = quantile(r_squared, 0.975)
   ) |> 
-  knitr::kable()
+  knitr::kable(digits = 3)
 ```
 
 identify 2.5% and 97.5% quantiles to find 95% confidence intervals for beta_1/beta_2
@@ -248,12 +270,19 @@ clean_birthwgt |>
   facet_wrap(~ name, scales = "free")
 ```
 
-propose a model for birthweight 
+Propose a model:
 ```{r}
-proposed_model = lm(bwt ~ gaweeks + momage + smoken + babysex + mrace, data = clean_birthwgt)
+proposed_model = lm(bwt ~ gaweeks + bhead + blength + babysex + momage + smoken + mrace, data = clean_birthwgt)
 
 summary(proposed_model)
 ```
+
+In my predicted model I included gestational age in weeks, baby head circumference at birth, baby length at birth, baby sex, mother's age at delivery, mother's race, and average number of cigarettes smoked per day during pregnancy.
+
+I picked these variables for both statistical reasoning and existing evidence. I initially included gestational age, baby head circumference, and baby length due to the fact that a baby with a larger head circumference and length are more likely to weight more. Additionally, pre-term babies will be lighter in comparison to full term babies, so it would make sense to include this as a predictor. There is existing evidence that indicates maternal health and associated demographic factors also influence birthweight, so the variables of smoking and race were also included. 
+
+I tested multiple models including these variables and others to determine which one would be most "optimal" to model birthweight, but other models did not show significant differences in p-value and R-squared, which indicated to me that they did not significantly impact the model. In order to keep the model parsimonious, I decided on including `gaweeks`, `bhead`, `blength`, `babysex`, `momage`, `smoken`, and `mrace`.
+
 
 residual and predicted plot
 ```{r}
@@ -262,8 +291,12 @@ clean_birthwgt |>
   add_residuals(proposed_model) |> 
   ggplot(aes(x = pred, y = resid)) +
   geom_point(alpha = 0.5) +
-  geom_hline(yintercept = 0) +
-  geom_smooth(method = "loess", se = FALSE)
+  geom_hline(yintercept = 0, color = "blue") +
+  labs(
+    title = "Residuals vs. Predicted",
+    x = "Predicted Value",
+    y = "Residuals"
+  )
 ```
 
 main effects only 
@@ -288,7 +321,7 @@ cross_validate =
 cross_validate = 
   cross_validate |> 
   mutate(
-    proposed = map(train, \(df) lm(bwt ~ gaweeks + bhead + blength + malform + smoken + babysex + mrace + ppwt + wtgain, data = clean_birthwgt)),
+    proposed = map(train, \(df) lm(bwt ~ gaweeks + bhead + blength + momage + smoken + babysex + mrace, data = clean_birthwgt)),
     main_effect = map(train, \(df) lm(bwt ~ gaweeks + blength, data = clean_birthwgt)),
     interaction = map(train, \(df) lm(bwt ~ bhead * blength * babysex, data = clean_birthwgt))
   ) |> 
@@ -313,3 +346,4 @@ cross_validate |>
   geom_violin()
 ```
 
+It appears that my proposed model has the lowest RMSE, which could indicate that it will be thebest at predicting baby's birthweight in comparison to the other 2 models. The interaction model also has pretty low RMSE, so it could also adequately predict birthweight. However the main effect model performs the worst in accurately predicting birthweight. 
