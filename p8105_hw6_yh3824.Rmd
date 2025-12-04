@@ -42,7 +42,7 @@ homicide_df = read_csv(file = "./data/homicide-data.csv")
 
 Create a `city_state` variable, filtering, make resolved vs unresolved variable
 
-```{r}
+```{r message = FALSE, warning = FALSE}
 homicide_df = 
   read_csv(file = "./data/homicide-data.csv") |> 
   janitor::clean_names() |> 
@@ -57,7 +57,7 @@ homicide_df =
   
 ```
 
-`glm` to fit logistic regression for Baltimore, MD
+`glm` to fit logistic regression for Baltimore, MD and output odds ratio and confidence interval
 
 ```{r}
 baltimore_df =
@@ -88,15 +88,11 @@ glm_resolved = function(df) {
   model = glm(resolved ~ victim_age + victim_sex + victim_race, data = df, family = binomial())
 
 }
-
-homicide_df |> 
-  filter(city_state == "Baltimore, MD") |> 
-  glm_resolved() 
 ```
 
-iterate model for each city  
+produce odds ratios and confidence interval for all cities  
 
-```{r}
+```{r message = FALSE, warning = FALSE}
 resolved_glm_results =
   homicide_df |> 
   nest(data = -city_state) |> 
@@ -114,7 +110,8 @@ resolved_glm_results =
   filter(term == "victim_sexMale") |> 
   select(city_state, odds_ratio, or_low, or_high)
 
-resolved_glm_results
+resolved_glm_results |> 
+  knitr::kable(digits = 3)
 ```
 
 create a plot that shows estimate ORs and CIs for each city, organize cities according to estimate OR
@@ -148,10 +145,6 @@ library(p8105.datasets)
 data("weather_df")
 ```
 
-bootstrapping - interested in r^2 and beta_1hat/beta_2hat 
-
-5,000 bootstrap samples and for each sample produce these 2 estimates 
-
 write function for lm, r_square, and beta1/beta2
 ```{r}
 boot_function = function(df) {
@@ -175,7 +168,7 @@ boot_function = function(df) {
 test function 
 
 ```{r}
-boot_function(weather_df)
+boot_function(weather_df) 
 ```
 
 generate 5000 datasets 
@@ -191,12 +184,14 @@ weather_sample =
 ```
 
 plot the distribution of r_squared
-```{r}
+```{r message = FALSE}
 weather_sample |> 
   ggplot(aes(x = r_squared)) +
   geom_histogram() +
   labs(
-    title = "Distibution of R squared"
+    title = "Distibution of R squared",
+    x = "R-squared",
+    y = "Count"
   )
 ```
 
@@ -205,12 +200,14 @@ weather_sample |>
 The distribution of r-squared appears to be approximately normally distributed with the center falling at around 0.92. The range appears to be between 0.93, 0.95. 
 
 plot the distribution of beta_1/beta_2
-```{r}
+```{r message = FALSE}
 weather_sample |> 
   ggplot(aes(x = beta_ratio)) +
   geom_histogram() +
   labs(
-    title = "Distribution of beta1/beta2"
+    title = "Distribution of beta1/beta2",
+    x = "Beta Ratio",
+    y = "Count"
   )
 ```
 
@@ -237,7 +234,7 @@ weather_sample |>
     beta_lower_ci = quantile(beta_ratio, 0.025),
     beta_upper_ci = quantile(beta_ratio, 0.975)
   ) |> 
-  knitr::kable()
+  knitr::kable(digits = 3)
 ```
 
 ## Problem 3
@@ -259,27 +256,25 @@ clean_birthwgt =
     mrace = factor(mrace,levels = c(1,2,3,4,8,9), labels = c("White", "Black", "Asian", "Puerto Rican", "Other", "Unknown")),
     malform = factor(malform, levels = c(0,1), labels = c("absent","present"))
   )
-
-colSums(is.na(clean_birthwgt))
-
-clean_birthwgt |> 
-  select(bwt, bhead, blength, gaweeks, momage, delwt, smoken, wtgain) |> 
-  pivot_longer(everything()) |> 
-  ggplot(aes(value)) + 
-  geom_histogram(bins = 30) +
-  facet_wrap(~ name, scales = "free")
 ```
 
+check for missing values 
+```{r}
+colSums(is.na(clean_birthwgt))
+```
+no missing values 
+ 
+ 
 Propose a model:
 ```{r}
 proposed_model = lm(bwt ~ gaweeks + bhead + blength + babysex + momage + smoken + mrace, data = clean_birthwgt)
 
-summary(proposed_model)
+summary(proposed_model) 
 ```
 
 In my predicted model I included gestational age in weeks, baby head circumference at birth, baby length at birth, baby sex, mother's age at delivery, mother's race, and average number of cigarettes smoked per day during pregnancy.
 
-I picked these variables for both statistical reasoning and existing evidence. I initially included gestational age, baby head circumference, and baby length due to the fact that a baby with a larger head circumference and length are more likely to weight more. Additionally, pre-term babies will be lighter in comparison to full term babies, so it would make sense to include this as a predictor. There is existing evidence that indicates maternal health and associated demographic factors also influence birthweight, so the variables of smoking and race were also included. 
+I picked these variables for both statistical reasoning and existing evidence. I initially included gestational age, baby head circumference, and baby length due to the fact that a baby with a larger head circumference and length are more likely to weight more. Additionally, pre-term babies will be lighter in comparison to full term babies, so it would make sense to include gestational age as a predictor. There is existing evidence that indicates maternal health and associated demographic factors also influence birthweight, so the variables of smoking and race were also included. 
 
 I tested multiple models including these variables and others to determine which one would be most "optimal" to model birthweight, but other models did not show significant differences in p-value and R-squared, which indicated to me that they did not significantly impact the model. In order to keep the model parsimonious, I decided on including `gaweeks`, `bhead`, `blength`, `babysex`, `momage`, `smoken`, and `mrace`.
 
@@ -294,17 +289,20 @@ clean_birthwgt |>
   geom_hline(yintercept = 0, color = "blue") +
   labs(
     title = "Residuals vs. Predicted",
-    x = "Predicted Value",
+    x = "Predicted",
     y = "Residuals"
   )
 ```
 
-main effects only 
+Residuals appear to be evenly distributed around 0.
+
+
+Make a model with main effects only 
 ```{r}
 main_effect_model = lm(bwt ~ gaweeks + blength, data = clean_birthwgt)
 ```
 
-interaction model 
+Make a model with interactions
 ```{r}
 interaction_model = lm(bwt ~ bhead * blength * babysex, data = clean_birthwgt)
 ```
@@ -332,7 +330,7 @@ cross_validate =
   )
 ```
 
-create boxplots to visualize
+create violin plots to visualize
 ```{r}
 cross_validate |> 
   select(starts_with("rmse")) |> 
@@ -346,4 +344,4 @@ cross_validate |>
   geom_violin()
 ```
 
-It appears that my proposed model has the lowest RMSE, which could indicate that it will be thebest at predicting baby's birthweight in comparison to the other 2 models. The interaction model also has pretty low RMSE, so it could also adequately predict birthweight. However the main effect model performs the worst in accurately predicting birthweight. 
+It appears that my proposed model has the lowest RMSE, which could indicate that it will be the best at predicting baby's birthweight in comparison to the other 2 models. The interaction model also has pretty low RMSE, so it could also adequately predict birthweight. However the main effect model performs the worst in accurately predicting birthweight. 
